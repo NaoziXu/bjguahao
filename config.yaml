@@ -1,19 +1,19 @@
 
 # username: 您的的用户名(一般是手机号码)
-username: "13888888888"
+username: ""
 
 # password: 密码
-password: "*****"
+password: ""
 
 # date: 挂号日期
-date: "2018-01-01"
+date: "2019-03-13"
 
 
 # hospitalId: 医院id
-hospitalId: "162"
+hospitalId: "133"
 
 # departmentId: 科室id
-departmentId: "200002248"
+departmentId: "200001351"
 
 # 关于如何获取 hospitalId 和 departmentId
 # 1. 打开挂号页面
@@ -27,7 +27,7 @@ dutyCode: "1"
 
 # patientName: 患者姓名
 # 若是自己挂号可为空
-patientName: "曹操"
+patientName: ""
 
 # 就诊卡号
 hospitalCardId: ""
@@ -38,12 +38,12 @@ medicareCardId: ""
 # 保险类型
 # 1:医保
 # 10:自费
-reimbursementType: "10"
+reimbursementType: "1"
 
 # doctorName: 医生姓名
 # 不填写的话默认选最好的医生
 # 填写后若这个医生没有号，会自动选其余号中最好的医生
-doctorName: "扁鹊"
+doctorName: ""
 
 # DebugLevel: 调试等级
 # 支持的调试等级有 debug/info/warning/error/critical
@@ -53,4 +53,4 @@ DebugLevel: "info"
 useIMessage: "false"
 
 # 是否使用 QPython3.6 运行本脚本
-useQPython3: "true"
+useQPython3: "false"

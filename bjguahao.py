@@ -11,8 +11,9 @@ import json
 import time
 import datetime
 import logging
-from lib.prettytable import PrettyTable
+import imessage
 import base64
+from lib.prettytable import PrettyTable
 
 if sys.version_info.major != 3:
     logging.error("请在python3环境下运行本程序")
@@ -39,6 +40,7 @@ class Config(object):
         try:
             with open(config_path, "r", encoding="utf-8") as yaml_file:
                 data = yaml.load(yaml_file)
+
                 debug_level = data["DebugLevel"]
                 if debug_level == "debug":
                     self.debug_level = logging.DEBUG
@@ -62,20 +64,10 @@ class Config(object):
                 self.department_id = data["departmentId"]
                 self.duty_code = data["dutyCode"]
                 self.patient_name = data["patientName"]
-                self.hospital_card_id = data["hospitalCardId"]
-                self.medicare_card_id = data["medicareCardId"]
-                self.reimbursement_type = data["reimbursementType"]
                 self.doctorName = data["doctorName"]
                 self.patient_id = int()
-                try:
-                    self.useIMessage = data["useIMessage"]
-                except KeyError:
-                    self.useIMessage = "false"
-                try:
-                    self.useQPython3 = data["useQPython3"]
-                except KeyError:
-                    self.useQPython3 = "false"
-                #
+                self.useIMessage = data["useIMessage"]
+
                 logging.info("配置加载完成")
                 logging.debug("手机号:" + str(self.mobile_no))
                 logging.debug("挂号日期:" + str(self.date))
@@ -85,7 +77,6 @@ class Config(object):
                 logging.debug("就诊人姓名:" + str(self.patient_name))
                 logging.debug("所选医生:" + str(self.doctorName))
                 logging.debug("使用mac电脑接收验证码:" + str(self.useIMessage))
-                logging.debug("是否使用 QPython3 运行本脚本:" + str(self.useQPython3))
 
                 if not self.date:
                     logging.error("请填写挂号时间")
@@ -105,31 +96,22 @@ class Guahao(object):
         self.browser = Browser()
         self.dutys = ""
         self.refresh_time = ''
+        self.header = {}
+        self.cookie_str = ''
+        self.cookie = {}
 
         self.login_url = "http://www.bjguahao.gov.cn/quicklogin.htm"
         self.send_code_url = "http://www.bjguahao.gov.cn/v/sendorder.htm"
         self.get_doctor_url = "http://www.bjguahao.gov.cn/dpt/partduty.htm"
-        self.confirm_url = "http://www.bjguahao.gov.cn/order/confirmV1.htm"
+        self.confirm_url = "http://www.bjguahao.gov.cn/order/confirm.htm"
         self.patient_id_url = "http://www.bjguahao.gov.cn/order/confirm/"
         self.department_url = "http://www.bjguahao.gov.cn/dpt/appoint/"
 
         self.config = Config(config_path)                       # config对象
         if self.config.useIMessage == 'true':
-            # 按需导入 imessage.py
-            import imessage
             self.imessage = imessage.IMessage()
         else:
             self.imessage = None
-
-        if self.config.useQPython3 == 'true':
-            try: # Android QPython3 验证
-                # 按需导入 qpython3.py
-                import qpython3
-                self.qpython3 = qpython3.QPython3()
-            except ModuleNotFoundError:
-                self.qpython3 = None
-        else:
-            self.qpython3 = None
 
     def is_login(self):
 
@@ -165,8 +147,7 @@ class Guahao(object):
         登陆
         """
         try:
-            # patch for qpython3
-            cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.mobile_no + ".cookies")
+            cookies_file = os.path.join("." + self.config.mobile_no + ".cookies")
             self.browser.load_cookies(cookies_file)
             if self.is_login():
                 logging.info("cookies登录成功")
@@ -179,8 +160,8 @@ class Guahao(object):
         password = self.config.password
         mobile_no = self.config.mobile_no
         payload = {
-            'mobileNo': base64.b64encode(mobile_no.encode()),
-            'password': base64.b64encode(password.encode()),
+            'mobileNo': base64.b64encode(mobile_no.encode('utf-8')),
+            'password': base64.b64encode(password.encode('utf-8')),
             'yzm': '',
             'isAjax': True,
         }
@@ -189,8 +170,7 @@ class Guahao(object):
         try:
             data = json.loads(response.text)
             if data["msg"] == "OK" and not data["hasError"] and data["code"] == 200:
-                # patch for qpython3
-                cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.mobile_no + ".cookies")
+                cookies_file = os.path.join("." + self.config.mobile_no + ".cookies")
                 self.browser.save_cookies(cookies_file)
                 logging.info("登陆成功")
                 return True
@@ -267,9 +247,6 @@ class Guahao(object):
         hospital_id = self.config.hospital_id
         department_id = self.config.department_id
         patient_id = self.config.patient_id
-        hospital_card_id = self.config.hospital_card_id
-        medicare_card_id = self.config.medicare_card_id
-        reimbursement_type = self.config.reimbursement_type
         doctor_id = str(doctor['doctorId'])
 
         payload = {
@@ -278,9 +255,9 @@ class Guahao(object):
             'departmentId': department_id,
             'doctorId': doctor_id,
             'patientId': patient_id,
-            'hospitalCardId': hospital_card_id,
-            'medicareCardId': medicare_card_id,
-            "reimbursementType": reimbursement_type, # 报销类型
+            'hospitalCardId': "",
+            'medicareCardId': "",
+            "reimbursementType": "10",          # 报销类型
             'smsVerifyCode': sms_code,          # TODO 获取验证码
             'childrenBirthday': "",
             'isAjax': True
@@ -290,15 +267,8 @@ class Guahao(object):
 
         try:
             data = json.loads(response.text)
-            if data["msg"] == "成功" and data["code"] == 1:
-                #20181027,成功result：
-                #{"msg":"成功","code":1,"orderId":"97465746","isLineUp":false}
+            if data["msg"] == "OK" and not data["hasError"] and data["code"] == 200:
                 logging.info("挂号成功")
-                return True
-            if data["code"] == 8008:
-                #重复订单，说明挂号成功
-                #{"code":8008,"msg":"科室预约规则检查重复订单","data":null}
-                logging.error(data["msg"])
                 return True
             else:
                 logging.error(data["msg"])
@@ -318,9 +288,8 @@ class Guahao(object):
 
         """获取就诊人Id"""
         if isinstance(doctor, str):
-            #logging.error("没号了,  亲~")
-            #sys.exit(-1)
-            return # 无号退出逻辑由上级函数run()负责
+            logging.error("没号了,  亲~")
+            sys.exit(-1)
         addr = self.gen_doctor_url(doctor)
         response = self.browser.get(addr, "")
         ret = response.text
@@ -341,6 +310,23 @@ class Guahao(object):
         """获取放号时间"""
         addr = self.gen_department_url()
         response = self.browser.get(addr, "")
+        # response = requests.get(addr)
+        # self.cookie_str = "JSESSIONID=9BBC8EC3F00C0C341F5F087CECFF775E; SESSION_COOKIE=7cab1829cea36edbcez07f7e; Hm_lvt_bc7eaca5ef5a22b54dd6ca44a23988fa=1551608590,1552133632; Hm_lpvt_bc7eaca5ef5a22b54dd6ca44a23988fa=1552138167"
+        # self.cookie = dict(map(lambda x: x.split('='), self.cookie_str.split(";")))
+        # self.header = {
+        #     'Accept': "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+        #     'Accept-Encoding': "gzip, deflate",
+        #     'Accept-Language': "zh-CN,zh;q=0.9",
+        #     'Cache-Control': "max-age=0",
+        #     'Connection': "keep-alive",
+        #     'Host': "www.bjguahao.gov.cn",
+        #     'Referer': "http://www.bjguahao.gov.cn/hp/appoint/1/" + self.config.hospital_id + ".htm",
+        #     'Upgrade-Insecure-Requests': "1",
+        #     'Cookie': "JSESSIONID=9BBC8EC3F00C0C341F5F087CECFF775E; SESSION_COOKIE=7cab1829cea36edbcez07f7e; Hm_lvt_bc7eaca5ef5a22b54dd6ca44a23988fa=1551608590,1552133632; Hm_lpvt_bc7eaca5ef5a22b54dd6ca44a23988fa=1552138167",
+        #     'User-Agent': "Mozilla / 5.0(Windows NT 10.0; WOW64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 72.0.3626.121 Safari / 537.36"
+        # }
+        # response = requests.get(addr,headers=self.header,cookies=self.cookie)
+        # response = requests.Session().get(addr,headers=self.header)
         ret = response.text
 
         # 放号时间
@@ -373,17 +359,12 @@ class Guahao(object):
         logging.debug(response.text)
         if data["msg"] == "OK." and data["code"] == 200:
             logging.info("获取验证码成功")
-            if self.imessage is not None: # 如果使用 iMessage
-                code = self.imessage.get_verify_code()
-            elif self.qpython3 is not None: # 如果使用 QPython3
-                code = self.qpython3.get_verify_code()
-            else:
+            if self.imessage is None:
                 code = input("输入短信验证码: ")
+            else:
+                code = self.imessage.get_verify_code()
             return code
         elif data["msg"] == "短信发送太频繁" and data["code"] == 812:
-            logging.error(data["msg"])
-            sys.exit()
-        elif data["msg"] == "抱歉，短信验证码发送次数已达到今日上限！" and data["code"] == 817:
             logging.error(data["msg"])
             sys.exit()
         else:
@@ -413,17 +394,8 @@ class Guahao(object):
             doctor = self.select_doctor()       # 2. 选择医生
             self.get_patient_id(doctor)         # 3. 获取病人id
             if doctor == "NoDuty":
-                # 如果当前时间 > 放号时间 + 30s
-                if self.start_time + datetime.timedelta(seconds=30) < datetime.datetime.now():
-                    # 确认无号，终止程序
-                    logging.error("没号了,  亲~")
-                    break
-                else:
-                    # 未到时间，强制重试
-                    logging.debug("放号时间: " + self.start_time.strftime("%Y-%m-%d %H:%M"))
-                    logging.debug("当前时间: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-                    logging.info("没号了,但截止时间未到，重试中")
-                    time.sleep(1)
+                logging.error("没号了,  亲~")
+                break
             elif doctor == "NotReady":
                 logging.info("好像还没放号？重试中")
                 time.sleep(1)
